@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package proto;
+option go_package = "proto";
+
+message File {
+    bytes Content = 1;
+}
+
+message FileRequest {
+    string Filename = 1;
+    int64 Size = 2;
+    File Data = 3;
+}
+
+message FileResponse {
+    bool Success = 1;
+    int64 Size = 2;
+}
+
+service FileStreaming {
+    rpc SendStream(stream FileRequest) returns (FileResponse) {};
+}
+
+
