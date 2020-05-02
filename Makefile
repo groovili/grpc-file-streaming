@@ -1,3 +1,8 @@
-gen-streaming:
+gen-proto:
 	protoc ./proto/streaming.proto --go_out=plugins=grpc:. ./proto/*.proto
-gen: gen-streaming
+
+build:
+	go build -o ./.bin/server ./server/server.go
+	go build -o ./.bin/client ./client/client.go
+
+build-all: gen-proto build

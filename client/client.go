@@ -9,6 +9,9 @@ import (
 	"path"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	log "github.com/sirupsen/logrus"
 	grpc "google.golang.org/grpc"
 )
@@ -31,10 +34,9 @@ func main() {
 	}()
 
 	host, port := "0.0.0.0", "50051"
-
 	con, err := grpc.Dial(fmt.Sprintf("%s:%s", host, port), grpc.WithInsecure())
 	if err != nil {
-		log.Errorf("Failed to dial to %s:%s :", host, port, err)
+		log.Errorf("Failed to dial to %s:%s :%v", host, port, err)
 		return
 	}
 	defer func() {
@@ -77,24 +79,46 @@ func main() {
 		n, err := f.ReadAt(buf, offset)
 		if err != nil {
 			if err == io.EOF {
-				resp, err = stream.CloseAndRecv()
+				// receive response and sending break loop
+				if resp, err = stream.CloseAndRecv(); err != nil {
+					log.Errorf("Failed closing stream: %v", err)
+				}
 
+				// successfully sent file
 				break
 			}
 
 			log.Errorf("Failed to read file part: %v", err)
-			_ = stream.CloseSend()
+
+			if err := stream.CloseSend(); err != nil {
+				log.Errorf("Failed closing send: %v", err)
+			}
+
 			break
 		}
 
 		req.Data.Content = buf
 
-		if err := stream.Send(req); err != nil {
-			if err != io.EOF {
-				log.Errorf("Failed to send stream: %v", err)
+		if err := stream.SendMsg(req); err != nil {
+			// receive status error message from server
+			err = stream.RecvMsg(nil)
+
+			sErr, ok := status.FromError(err)
+			if ok {
+				switch sErr.Code() {
+				case codes.DeadlineExceeded:
+					log.Infof("Deadline exceeded: %s", sErr.Message())
+				case codes.Internal:
+					log.Errorf("Server error: %s", sErr.Message())
+				}
+			} else {
+				log.Errorf("Transport layer error: %v", err)
 			}
 
-			_ = stream.CloseSend()
+			// in any case close send and break loop
+			if err := stream.CloseSend(); err != nil {
+				log.Errorf("Failed closing send: %v", err)
+			}
 
 			break
 		}
@@ -102,9 +126,14 @@ func main() {
 		offset += int64(n)
 	}
 
-	if resp.Success {
-		log.Infof("Successfully send file with size %d mB", resp.Size>>10)
+	if resp == nil {
+		log.Error("Job failed")
+		return
 	}
 
-	log.Infof("Task took %d seconds", int(time.Now().Sub(startTime).Seconds()))
+	if resp.Success {
+		log.Infof("Successfully send file with size %d kB", resp.Size>>10)
+	}
+
+	log.Infof("Task took %d seconds", int(time.Since(startTime).Seconds()))
 }
