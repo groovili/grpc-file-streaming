@@ -11,6 +11,8 @@ import (
 	"path"
 	"time"
 
+	"google.golang.org/grpc/credentials"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -135,7 +137,7 @@ func (s *server) SendStream(stream proto.FileStreaming_SendStreamServer) error {
 }
 
 func main() {
-	host, port := "0.0.0.0", "50051"
+	host, port := "localhost", "50051"
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
@@ -164,14 +166,21 @@ func main() {
 		}
 	}()
 
-	s := grpc.NewServer([]grpc.ServerOption{}...)
+	opts := make([]grpc.ServerOption, 0)
+	cred, err := credentials.NewServerTLSFromFile("./ssl/server.crt", "./ssl/server.pem")
+	if err != nil {
+		log.Errorf("Error while creating tls server: %v", err)
+		return
+	}
+	opts = append(opts, grpc.Creds(cred))
+
+	s := grpc.NewServer(opts...)
 
 	proto.RegisterFileStreamingServer(s, service)
 
 	serverErr := make(chan error, 1)
 	go func() {
 		log.Info("Starting gRPC server..")
-
 		serverErr <- s.Serve(l)
 	}()
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	log "github.com/sirupsen/logrus"
@@ -33,8 +34,16 @@ func main() {
 		}
 	}()
 
-	host, port := "0.0.0.0", "50051"
-	con, err := grpc.Dial(fmt.Sprintf("%s:%s", host, port), grpc.WithInsecure())
+	host, port := "localhost", "50051"
+
+	cred, err := credentials.NewClientTLSFromFile("./ssl/ca.crt", "")
+	if err != nil {
+		log.Errorf("Error while creating tls client: %v", err)
+		return
+	}
+	opts := grpc.WithTransportCredentials(cred)
+
+	con, err := grpc.Dial(fmt.Sprintf("%s:%s", host, port), opts)
 	if err != nil {
 		log.Errorf("Failed to dial to %s:%s :%v", host, port, err)
 		return
